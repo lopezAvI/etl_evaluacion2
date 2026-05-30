@@ -4,9 +4,10 @@ MOTOR ETL PROFESIONAL - EVALUACION 2 (PARTE 1 + 2 + 3)
 Arquitectura y Almacenamiento de Datos
 Sede: Concepcion-Talcahuano - INACAP
 ============================================================
-Nombres : Ignacio López, Arturo Díaz, Bayron Cerna.
+Autor   : [Tu Nombre]
 Docente : Hernan R. Saez Talavera
-Fecha   : 30-05-2026
+Fecha   : 2026
+Version : 3.0
 
 APIs utilizadas:
     COMUNAS : https://apis.digital.gob.cl/dpa/comunas
@@ -930,12 +931,13 @@ def main() -> None:
     configurar_pagina()
     mostrar_encabezado()
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         '🏙️ P1 — Comunas',
         '🌟 P2-I — Famosos',
         '🌍 P2-II — Lugares',
         '🔍 P3-I — Comunas + API',
-        '🗺️ P3-II/III — Famosos+Imagen / Mapa',
+        '🌟 P3-II — Famosos + Imagen',
+        '🗺️ P3-III — Mapa Mundial',
     ])
 
     # ── TAB 1: COMUNAS (heredado) ──────────────────────────────
@@ -995,7 +997,12 @@ def main() -> None:
             with st.spinner('Procesando...'):
                 try:
                     df_l, df_g, df_d, ruta_log, res = procesar_lugares(archivo.getvalue())
+                    # Guardar en session_state para reutilizar en Tab Mapa
+                    st.session_state['df_mapa_l'] = df_l
+                    st.session_state['df_mapa_g'] = df_g
+                    st.session_state['df_mapa_d'] = df_d
                     mostrar_resumen(res)
+                    st.info('Datos guardados. Ve al tab **P3-III — Mapa Mundial** para visualizarlos.')
                     st1, st2, st3 = st.tabs([
                         f'Lugares ({len(df_l)})',
                         f'Georeferencias ({len(df_g)})',
@@ -1117,144 +1124,154 @@ def main() -> None:
 
     # ── TAB 5: FAMOSOS CON IMAGEN + MAPA (PARTE 3-II y 3-III) ─
     with tab5:
-        st.markdown('### Famosos con Imagen Wikipedia + Mapa de Lugares')
+        st.markdown('### Famosos con Imagen de Wikipedia (Parte 3-II)')
+        st.markdown(
+            'Sube el archivo `DATOS2026-2.txt`, carga la lista y luego '
+            'expande cualquier famoso para ver su **imagen, descripcion '
+            'y fuente** obtenidas directamente desde Wikipedia.'
+        )
 
-        subtab_famosos, subtab_mapa = st.tabs([
-            '🌟 Famosos con Imagen (Parte 3-II)',
-            '🗺️ Mapa Mundial (Parte 3-III)',
-        ])
+        archivo_fam2 = st.file_uploader(
+            'Archivo de famosos', type=['txt'], key='up_fam2'
+        )
 
-        # ---- SUBTAB: FAMOSOS CON IMAGEN ----------------------
-        with subtab_famosos:
-            st.markdown('#### Lista de famosos con busqueda de imagen en Wikipedia')
-            st.markdown(
-                'Sube el archivo `DATOS2026-2.txt`, procesa la lista y luego '
-                'selecciona un famoso para ver su imagen, descripcion y fuente.'
-            )
+        if archivo_fam2 and st.button('Cargar lista', key='btn_fam2', type='primary'):
+            with st.spinner('Procesando lista...'):
+                df_fam, _, _ = procesar_famosos(archivo_fam2.getvalue())
+                st.session_state['df_famosos_p3'] = df_fam
+                st.success(f'{len(df_fam)} famosos cargados correctamente.')
 
-            archivo_fam2 = st.file_uploader(
-                'Archivo de famosos', type=['txt'], key='up_fam2'
-            )
+        if 'df_famosos_p3' in st.session_state:
+            df_fam = st.session_state['df_famosos_p3']
+            st.markdown(f'#### Lista completa — {len(df_fam)} personajes')
 
-            if archivo_fam2 and st.button('Cargar lista', key='btn_fam2', type='primary'):
-                with st.spinner('Procesando lista...'):
-                    df_fam, _, _ = procesar_famosos(archivo_fam2.getvalue())
-                    st.session_state['df_famosos_p3'] = df_fam
-                    st.success(f'{len(df_fam)} famosos cargados.')
+            for _, row in df_fam.iterrows():
+                nombre  = row['Nombre']
+                edad    = row['Edad']
+                fecha   = row['Fecha_Nacimiento']
+                estado  = row['Estado_Fecha']
+                cumple  = row['Cumpleanos_Hoy']
 
-            # Mostrar lista y selector
-            if 'df_famosos_p3' in st.session_state:
-                df_fam = st.session_state['df_famosos_p3']
+                edad_str   = f'{int(edad)} anos' if edad is not None and str(edad) != 'nan' else 'N/A'
+                cumple_str = ' 🎂' if cumple == 1 else ''
 
-                st.markdown('#### Lista completa')
+                with st.expander(f'{nombre} — {edad_str}{cumple_str}  |  {fecha}'):
+                    col_info, col_img = st.columns([2, 1])
 
-                # Construir tabla resumen con botón "Ver imagen"
-                for _, row in df_fam.iterrows():
-                    nombre  = row['Nombre']
-                    edad    = row['Edad']
-                    fecha   = row['Fecha_Nacimiento']
-                    estado  = row['Estado_Fecha']
-                    cumple  = row['Cumpleanos_Hoy']
+                    with col_info:
+                        st.markdown(f'**Nombre:** {nombre}')
+                        st.markdown(f'**Fecha de nacimiento:** {fecha}')
+                        st.markdown(f'**Edad calculada:** {edad_str}')
+                        st.markdown(f'**Estado fecha:** {estado}')
 
-                    edad_str = f'{int(edad)} anos' if edad is not None and str(edad) != 'nan' else 'N/A'
-                    cumple_str = ' 🎂' if cumple == 1 else ''
+                    with col_img:
+                        if st.button('Ver imagen Wikipedia', key=f'wiki_{nombre}'):
+                            with st.spinner('Buscando en Wikipedia...'):
+                                datos_wiki = buscar_imagen_wikipedia(nombre)
 
-                    with st.expander(f'{nombre} — {edad_str}{cumple_str}  |  {fecha}'):
-                        col_info, col_img = st.columns([2, 1])
-
-                        with col_info:
-                            st.markdown(f'**Nombre:** {nombre}')
-                            st.markdown(f'**Fecha de nacimiento:** {fecha}')
-                            st.markdown(f'**Edad calculada:** {edad_str}')
-                            st.markdown(f'**Estado fecha:** {estado}')
-
-                        with col_img:
-                            if st.button(f'Ver imagen Wikipedia', key=f'wiki_{nombre}'):
-                                with st.spinner(f'Buscando en Wikipedia...'):
-                                    datos_wiki = buscar_imagen_wikipedia(nombre)
-
-                                if datos_wiki['estado'] == 'OK':
-                                    if datos_wiki['imagen']:
-                                        st.image(
-                                            datos_wiki['imagen'],
-                                            caption=nombre,
-                                            use_container_width=True,
-                                        )
-                                    else:
-                                        st.info('Wikipedia no tiene imagen para este personaje.')
-
-                                    st.markdown(f'**Descripcion:** {datos_wiki["descripcion"]}')
-                                    st.markdown(
-                                        f'**Fuente:** [{datos_wiki["fuente"]}]'
-                                        f'({datos_wiki["fuente"]})'
-                                    )
-                                    st.caption(
-                                        f'Imagen capturada en Wikipedia el: '
-                                        f'{datos_wiki["timestamp"]}'
-                                    )
-                                elif datos_wiki['estado'] == 'NO_ENCONTRADO':
-                                    st.warning(f'"{nombre}" no encontrado en Wikipedia.')
-                                    st.markdown(
-                                        f'[Buscar manualmente en Wikipedia]'
-                                        f'(https://en.wikipedia.org/wiki/'
-                                        f'{nombre.replace(" ", "_")})'
+                            if datos_wiki['estado'] == 'OK':
+                                if datos_wiki['imagen']:
+                                    st.image(
+                                        datos_wiki['imagen'],
+                                        caption=nombre,
+                                        use_container_width=True,
                                     )
                                 else:
-                                    st.error(f'Error al consultar Wikipedia: {datos_wiki["descripcion"]}')
+                                    st.info('Wikipedia no tiene imagen para este personaje.')
+                                st.markdown(f'**Descripcion:** {datos_wiki["descripcion"]}')
+                                st.markdown(
+                                    f'**Fuente:** [{datos_wiki["fuente"]}]'
+                                    f'({datos_wiki["fuente"]})'
+                                )
+                                st.caption(
+                                    f'Imagen capturada en Wikipedia el: '
+                                    f'{datos_wiki["timestamp"]}'
+                                )
+                            elif datos_wiki['estado'] == 'NO_ENCONTRADO':
+                                st.warning(f'"{nombre}" no encontrado en Wikipedia.')
+                                st.markdown(
+                                    f'[Buscar manualmente]'
+                                    f'(https://en.wikipedia.org/wiki/'
+                                    f'{nombre.replace(" ", "_")})'
+                                )
+                            else:
+                                st.error(f'Error Wikipedia: {datos_wiki["descripcion"]}')
 
-        # ---- SUBTAB: MAPA ------------------------------------
-        with subtab_mapa:
-            st.markdown('#### Mapa mundial de lugares historicos')
-            st.markdown(
-                'Sube el archivo `DATOS2026-3.TXT` para visualizar todos '
-                'los lugares en el mapa. Haz clic en cada **pin rojo** para '
-                'ver los datos del lugar y acceder a Google Maps.'
+    # ── TAB 6: MAPA MUNDIAL (PARTE 3-III) ─────────────────────
+    with tab6:
+        st.markdown('### Mapa Mundial de Lugares Historicos (Parte 3-III)')
+        st.markdown(
+            'Visualiza **todos los lugares cargados** en un mapa interactivo. '
+            'Haz clic en cualquier **pin rojo** para ver el nombre, dirección '
+            'y acceder a **Google Maps** directamente.'
+        )
+
+        # Verificar si ya hay datos del Tab 3
+        tiene_datos = all(
+            k in st.session_state
+            for k in ['df_mapa_l', 'df_mapa_g', 'df_mapa_d']
+        )
+
+        if tiene_datos:
+            n_lugares = len(st.session_state['df_mapa_l'])
+            st.success(
+                f'{n_lugares} lugares cargados desde el procesamiento anterior. '
+                'Puedes generar el mapa directamente o subir un nuevo archivo.'
             )
 
+        # Opción: subir nuevo archivo
+        with st.expander('Cargar nuevo archivo de lugares (opcional)'):
             archivo_map = st.file_uploader(
-                'Archivo de lugares', type=['txt', 'TXT'], key='up_map'
+                'Archivo de lugares (.txt)',
+                type=['txt', 'TXT'],
+                key='up_map',
             )
-
-            if archivo_map and st.button('Generar Mapa', key='btn_map', type='primary'):
-                with st.spinner('Generando mapa...'):
+            if archivo_map and st.button('Procesar archivo', key='btn_map_load'):
+                with st.spinner('Procesando...'):
                     try:
-                        df_l, df_g, df_d, _, res_map = procesar_lugares(
-                            archivo_map.getvalue()
-                        )
+                        df_l, df_g, df_d, _, _ = procesar_lugares(archivo_map.getvalue())
                         st.session_state['df_mapa_l'] = df_l
                         st.session_state['df_mapa_g'] = df_g
                         st.session_state['df_mapa_d'] = df_d
-                        st.success(f'{len(df_l)} lugares cargados en el mapa.')
+                        st.success(f'{len(df_l)} lugares listos para el mapa.')
+                        st.rerun()
                     except Exception as e:
-                        st.error(f'Error al procesar lugares: {e}')
+                        st.error(f'Error: {e}')
 
-            # Renderizar mapa si hay datos
-            if all(k in st.session_state for k in ['df_mapa_l', 'df_mapa_g', 'df_mapa_d']):
-                df_l = st.session_state['df_mapa_l']
-                df_g = st.session_state['df_mapa_g']
-                df_d = st.session_state['df_mapa_d']
+        # Generar y mostrar el mapa
+        if all(k in st.session_state for k in ['df_mapa_l', 'df_mapa_g', 'df_mapa_d']):
+            df_l = st.session_state['df_mapa_l']
+            df_g = st.session_state['df_mapa_g']
+            df_d = st.session_state['df_mapa_d']
 
-                st.markdown(f'**{len(df_l)} lugares en el mapa** — '
-                            'Haz clic en cualquier pin para ver detalles y acceder a Google Maps.')
+            st.markdown(
+                f'**{len(df_l)} lugares** marcados en el mapa. '
+                'Haz clic en un pin para ver sus datos y abrirlo en Google Maps.'
+            )
 
-                mapa = crear_mapa_lugares(df_l, df_g, df_d)
+            mapa = crear_mapa_lugares(df_l, df_g, df_d)
 
-                # Renderizar mapa interactivo
-                datos_mapa = st_folium(
-                    mapa,
-                    width='100%',
-                    height=550,
-                    returned_objects=['last_object_clicked_popup'],
+            datos_mapa = st_folium(
+                mapa,
+                width='100%',
+                height=600,
+                returned_objects=['last_object_clicked_popup'],
+            )
+
+            # Panel con datos del lugar al hacer clic
+            if datos_mapa and datos_mapa.get('last_object_clicked_popup'):
+                st.markdown('---')
+                st.markdown('#### Lugar seleccionado')
+                st.info(
+                    'Usa el boton **📍 Ver en Google Maps** dentro del popup '
+                    'para abrir la ubicacion exacta en Google Maps en una nueva pestana.'
                 )
-
-                # Panel lateral con datos del lugar seleccionado
-                if datos_mapa and datos_mapa.get('last_object_clicked_popup'):
-                    st.markdown('---')
-                    st.markdown('#### Lugar seleccionado')
-                    st.info(
-                        'Usa el boton **📍 Ver en Google Maps** dentro del popup '
-                        'del pin para abrir la ubicacion en Google Maps.'
-                    )
+        else:
+            st.warning(
+                'No hay datos cargados. '
+                'Ve al tab **P2-II — Lugares** y procesa el archivo primero, '
+                'o usa el cargador de arriba.'
+            )
 
 
 # ── Punto de entrada ──────────────────────────────────────────
